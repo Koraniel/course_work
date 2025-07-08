@@ -1,0 +1,11 @@
+train:
+  data_object: # name of the tensor on which we apply transform
+    _target_: torch.nn.Sequential # to apply several transforms sequentially
+    _args_:
+      - _target_: src.transforms.IDTransform
+
+inference:
+  data_object: # name of the tensor on which we apply transform
+    _target_: torch.nn.Sequential # to apply several transforms sequentially
+    _args_:
+      - _target_: src.transforms.IDTransform

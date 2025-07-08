@@ -1,0 +1,21 @@
+device: "auto"
+train: # metrics that are calculated during training
+  - _target_: src.metrics.PlaceholderMetric
+    metric:
+      _target_: torchmetrics.classification.MulticlassAccuracy
+      num_classes: 10
+    device: ${metrics.device}
+    name: "PlaceholderMetric" # just an example to see difference
+inference: # metrics that are calculated during inference (eval)
+  - _target_: src.metrics.PlaceholderMetric
+    metric:
+      _target_: torchmetrics.classification.MulticlassAccuracy
+      num_classes: 10
+    device: ${metrics.device}
+    name: "PlaceholderMetric"
+  - _target_: src.metrics.PlaceholderMetric
+    metric:
+      _target_: torchmetrics.classification.MulticlassAccuracy
+      num_classes: 10
+    device: ${metrics.device}
+    name: "PlaceholderMetric"
