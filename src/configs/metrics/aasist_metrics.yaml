@@ -1,21 +1,13 @@
 device: "auto"
-train: # metrics that are calculated during training
-  - _target_: src.metrics.PlaceholderMetric
-    metric:
-      _target_: torchmetrics.classification.MulticlassAccuracy
-      num_classes: 10
-    device: ${metrics.device}
-    name: "PlaceholderMetric" # just an example to see difference
+train: [] # empty list
 inference: # metrics that are calculated during inference (eval)
-  - _target_: src.metrics.PlaceholderMetric
-    metric:
-      _target_: torchmetrics.classification.MulticlassAccuracy
-      num_classes: 10
+  - _target_: src.metrics.EERMetric
     device: ${metrics.device}
-    name: "PlaceholderMetric"
-  - _target_: src.metrics.PlaceholderMetric
-    metric:
-      _target_: torchmetrics.classification.MulticlassAccuracy
-      num_classes: 10
+    name: "EER"
+    datasetwise: True
+  - _target_: src.metrics.tDCFMetric
     device: ${metrics.device}
-    name: "PlaceholderMetric"
+    name: "tDCF"
+    asv_score_file_dev: ASVspoof2019_LA_asv_scores/ASVspoof2019.LA.asv.dev.gi.trl.scores.txt
+    asv_score_file_eval: ASVspoof2019_LA_asv_scores/ASVspoof2019.LA.asv.eval.gi.trl.scores.txt
+    datasetwise: True

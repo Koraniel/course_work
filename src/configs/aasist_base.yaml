@@ -8,23 +8,26 @@ defaults:
   - _self_
 optimizer:
   _target_: torch.optim.Adam
-  lr: 3e-4
-lr_scheduler:
-  _target_: torch.optim.lr_scheduler.StepLR
-  gamma: 0.9
-  step_size: ${trainer.epoch_len}
+  lr: ${trainer.base_lr}
+  betas:
+    - 0.9
+    - 0.999
+  weight_decay: 0.0001
+  amsgrad: False
 loss_function:
   _target_: src.loss.AASIST_Loss
 trainer:
   log_step: 10
   n_epochs: 100
-  epoch_len: 2115 # HOW am I supposed to know this? I do not know len of dataset, so I NEED to write null. But thisleads to TypeError!
+  epoch_len: null # HOW am I supposed to know this? I do not know len of dataset, so I NEED to write null. But thisleads to TypeError!
   device_tensors: ["data_object", "labels"]
   resume_from: null
-  device: auto
+  device: xpu
   override: True
   monitor: "off" # off because there are 2 metrics we monitor, don't know how to deal with it on this template
   save_period: 5
   early_stop: ${trainer.n_epochs}
   save_dir: "saved"
   seed: 1
+  lr_min: 0.000005
+  base_lr: 0.0001

@@ -1,8 +1,12 @@
-defaults:
-  - batch_transforms: aasist_batch_transforms
-  - _self_
+# defaults:
+#   - batch_transforms: aasist_batch_transforms
+#   - _self_
 
 # this lines are required if you do not use instance transforms
 instance_transforms:
+  train: null
+  inference: null
+
+batch_transforms:
   train: null
   inference: null

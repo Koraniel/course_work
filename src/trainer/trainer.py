@@ -1,6 +1,7 @@
 from src.metrics.tracker import MetricTracker
 from src.trainer.base_trainer import BaseTrainer
-
+from tqdm.auto import tqdm
+import torch
 
 class Trainer(BaseTrainer):
     """
@@ -52,8 +53,39 @@ class Trainer(BaseTrainer):
             metrics.update(loss_name, batch[loss_name].item())
 
         for met in metric_funcs:
-            metrics.update(met.name, met(**batch))
+            if not met.datasetwise:
+                metrics.update(met.name, met(**batch))
         return batch
+    
+    def process_dataset(self, part, dataloader):
+        self.model.eval()
+        self.train = False
+        results = {"logits": None, "labels": None, "filenames": []}
+        with torch.no_grad():
+            for batch in tqdm(dataloader, desc=part, total=len(dataloader)):
+                results["filenames"].extend(batch["filenames"])
+                if results["labels"] is None:
+                    results["labels"] = batch["labels"]
+                else:
+                    results["labels"] = torch.cat((results["labels"], batch["labels"]))
+                batch = self.move_batch_to_device(batch)
+                batch = self.transform_batch(batch)  # transform batch on device -- faster
+                outputs = self.model(**batch)
+                if results["logits"] is None:
+                    results["logits"] = outputs["logits"]
+                else:
+                    results["logits"] = torch.cat((results["logits"], outputs["logits"]))
+        results['part'] = part
+        return results
+    
+    # TODO: make this work not only for inference
+    def calculate_metrics(self, dataset_results, metrics: MetricTracker):
+        metric_funcs = self.metrics["inference"]
+
+        for met in metric_funcs:
+            if met.datasetwise:
+                metrics.update(met.name, met(**dataset_results))
+        
 
     def _log_batch(self, batch_idx, batch, mode="train"):
         """

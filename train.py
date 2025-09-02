@@ -7,7 +7,7 @@ from omegaconf import OmegaConf
 
 from src.datasets.data_utils import get_dataloaders
 from src.trainer import Trainer
-from src.utils.init_utils import set_random_seed, setup_saving_and_logging
+from src.utils.init_utils import set_random_seed, setup_saving_and_logging, cosine_annealing
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -48,11 +48,22 @@ def main(config):
     # build optimizer, learning rate scheduler
     trainable_params = filter(lambda p: p.requires_grad, model.parameters())
     optimizer = instantiate(config.optimizer, params=trainable_params)
-    lr_scheduler = instantiate(config.lr_scheduler, optimizer=optimizer)
 
     # epoch_len = number of iterations for iteration-based training
     # epoch_len = None or len(dataloader) for epoch-based training
     epoch_len = config.trainer.get("epoch_len")
+    if epoch_len is None: epoch_len = len(dataloaders["train"])
+
+    # TODO: REWRITE WITH CONFIG
+    #lr_scheduler = instantiate(config.lr_scheduler, optimizer=optimizer)
+    lr_scheduler = torch.optim.lr_scheduler.LambdaLR(
+            optimizer,
+            lr_lambda=lambda step: cosine_annealing(
+                step,
+                config.trainer.get("n_epochs") * epoch_len,
+                1,  # since lr_lambda computes multiplicative factor
+                config.trainer.get("lr_min") / config.trainer.get("base_lr")
+                ))
 
     trainer = Trainer(
         model=model,

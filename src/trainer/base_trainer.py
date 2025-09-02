@@ -264,20 +264,28 @@ class BaseTrainer:
         self.model.eval()
         self.evaluation_metrics.reset()
         with torch.no_grad():
-            for batch_idx, batch in tqdm(
-                enumerate(dataloader),
-                desc=part,
-                total=len(dataloader),
-            ):
-                batch = self.process_batch(
-                    batch,
+
+            dataset_results = self.process_dataset(part, dataloader)
+            
+
+            # for batch_idx, batch in tqdm(
+            #     enumerate(dataloader),
+            #     desc=part,
+            #     total=len(dataloader),
+            # ):
+            #     batch = self.process_batch(
+            #         batch,
+            #         metrics=self.evaluation_metrics,
+            #     )
+            self.calculate_metrics(
+                    dataset_results,
                     metrics=self.evaluation_metrics,
                 )
             self.writer.set_step(epoch * self.epoch_len, part)
             self._log_scalars(self.evaluation_metrics)
-            self._log_batch(
-                batch_idx, batch, part
-            )  # log only the last batch during inference
+            # self._log_batch(
+            #     batch_idx, batch, part
+            # )  # log only the last batch during inference
 
         return self.evaluation_metrics.result()
 

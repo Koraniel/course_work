@@ -1,13 +1,11 @@
 train:
-  _target_: torch.utils.data.ConcatDataset # we can concat datasets if we want to
+  _target_: torch.utils.data.ConcatDataset
   datasets:
-    - _target_: src.datasets.Dataset_ASVspoof2019_train
+    - _target_: src.datasets.Dataset_ASVspoof2019_general
+      dataset_type: train
 val:
-  _target_: src.datasets.Dataset_ASVspoof2019_dev
+  _target_: src.datasets.Dataset_ASVspoof2019_general
+  dataset_type: dev
 test:
-  _target_: src.datasets.ExampleDataset
-  input_length: 1024
-  dataset_length: 15
-  n_classes: 10
-  name: "test"
-  instance_transforms: ${transforms.instance_transforms.inference}
+  _target_: src.datasets.Dataset_ASVspoof2019_general
+  dataset_type: eval # strange, but ok I guess...

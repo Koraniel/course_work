@@ -160,3 +160,9 @@ def setup_saving_and_logging(config):
     logger.setLevel(logging.DEBUG)
 
     return logger
+
+
+def cosine_annealing(step, total_steps, lr_max, lr_min):
+    """Cosine Annealing for learning rate decay scheduler"""
+    return lr_min + (lr_max -
+                     lr_min) * 0.5 * (1 + np.cos(step / total_steps * np.pi))
