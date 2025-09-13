@@ -1,6 +1,7 @@
 from src.metrics.tracker import MetricTracker
 from src.trainer.base_trainer import BaseTrainer
 from tqdm.auto import tqdm
+import torch.nn.functional as F
 import torch
 
 class Trainer(BaseTrainer):
@@ -71,14 +72,26 @@ class Trainer(BaseTrainer):
                 batch = self.move_batch_to_device(batch)
                 batch = self.transform_batch(batch)  # transform batch on device -- faster
                 outputs = self.model(**batch)
+                sr = 16000
+                A = 3/50
+                B = 7/50
+                s = 15.0
+                normW = F.normalize(outputs['W'])
+                normv = F.normalize(outputs['vectors'])
+                logits = normv @ normW
+                one_hot = F.one_hot(batch["labels"], num_classes=logits.shape[1]).float()
+                m = (batch['duration'] / sr) * A + B
+                logits = s * (logits - m * one_hot)
                 if results["logits"] is None:
-                    results["logits"] = outputs["logits"]
+                    results["logits"] = logits
                 else:
-                    results["logits"] = torch.cat((results["logits"], outputs["logits"]))
+                    results["logits"] = torch.cat((results["logits"], logits))
         results['part'] = part
         return results
     
     # TODO: make this work not only for inference
+    # Now I understand that I need to completely rewrite structure of 
+    # the whole template in order to do this how I want   T_T
     def calculate_metrics(self, dataset_results, metrics: MetricTracker):
         metric_funcs = self.metrics["inference"]
 

@@ -52,7 +52,7 @@ def main(config):
         batch_transforms=batch_transforms,
         save_path=save_path,
         metrics=metrics,
-        skip_model_load=False,
+        skip_model_load=config.inferencer.skip_model_load,
     )
 
     logs = inferencer.run_inference()

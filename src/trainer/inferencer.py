@@ -1,6 +1,6 @@
 import torch
 from tqdm.auto import tqdm
-
+import torch.nn.functional as F
 from src.metrics.tracker import MetricTracker
 from src.trainer.base_trainer import BaseTrainer
 
@@ -124,7 +124,8 @@ class Inferencer(BaseTrainer):
 
         if metrics is not None:
             for met in self.metrics["inference"]:
-                metrics.update(met.name, met(**batch))
+                if not met.datasetwise:
+                    metrics.update(met.name, met(**batch))
 
         # Some saving logic. This is an example
         # Use if you need to save predictions on disk
@@ -173,16 +174,64 @@ class Inferencer(BaseTrainer):
             (self.save_path / part).mkdir(exist_ok=True, parents=True)
 
         with torch.no_grad():
-            for batch_idx, batch in tqdm(
-                enumerate(dataloader),
-                desc=part,
-                total=len(dataloader),
-            ):
-                batch = self.process_batch(
-                    batch_idx=batch_idx,
-                    batch=batch,
-                    part=part,
-                    metrics=self.evaluation_metrics,
-                )
 
+            # This is surley disgusting. I feel bad writing this.
+            # This will not work in general case but for me it is enough for now.
+            is_batchwise_metric = False
+            for met in self.metrics["inference"]:
+                if not met.datasetwise:
+                    is_batchwise_metric = True
+                    break
+            if is_batchwise_metric:
+                for batch_idx, batch in tqdm(
+                    enumerate(dataloader),
+                    desc=part,
+                    total=len(dataloader),
+                ):
+                    batch = self.process_batch(
+                        batch_idx=batch_idx,
+                        batch=batch,
+                        part=part,
+                        metrics=self.evaluation_metrics,
+                    )
+            results = self.process_dataset(part, dataloader)
+            self.calculate_metrics(results, self.evaluation_metrics)
         return self.evaluation_metrics.result()
+    
+    def calculate_metrics(self, dataset_results, metrics: MetricTracker):
+        metric_funcs = self.metrics["inference"]
+
+        for met in metric_funcs:
+            if met.datasetwise:
+                metrics.update(met.name, met(**dataset_results))
+
+    def process_dataset(self, part, dataloader):
+        self.model.eval()
+        self.train = False
+        results = {"logits": None, "labels": None, "filenames": []}
+        with torch.no_grad():
+            for batch in tqdm(dataloader, desc=part, total=len(dataloader)):
+                results["filenames"].extend(batch["filenames"])
+                if results["labels"] is None:
+                    results["labels"] = batch["labels"]
+                else:
+                    results["labels"] = torch.cat((results["labels"], batch["labels"]))
+                batch = self.move_batch_to_device(batch)
+                batch = self.transform_batch(batch)  # transform batch on device -- faster
+                outputs = self.model(**batch)
+                sr = 16000
+                A = 3/50
+                B = 7/50
+                s = 15.0
+                normW = F.normalize(outputs['W'])
+                normv = F.normalize(outputs['vectors'])
+                logits = normv @ normW
+                one_hot = F.one_hot(batch["labels"], num_classes=logits.shape[1]).float()
+                m = (batch['duration'] / sr) * A + B
+                logits = s * (logits - m * one_hot)
+                if results["logits"] is None:
+                    results["logits"] = logits
+                else:
+                    results["logits"] = torch.cat((results["logits"], logits))
+        results['part'] = part
+        return results

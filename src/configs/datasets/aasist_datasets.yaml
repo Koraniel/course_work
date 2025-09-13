@@ -1,11 +1,12 @@
 train:
-  _target_: torch.utils.data.ConcatDataset
-  datasets:
-    - _target_: src.datasets.Dataset_ASVspoof2019_general
-      dataset_type: train
+  _target_: src.datasets.Dataset_ASVspoof2019_general
+  model_type: "aasist"
+  dataset_type: train
 val:
   _target_: src.datasets.Dataset_ASVspoof2019_general
+  model_type: "aasist"
   dataset_type: dev
 test:
   _target_: src.datasets.Dataset_ASVspoof2019_general
+  model_type: "aasist"
   dataset_type: eval # strange, but ok I guess...

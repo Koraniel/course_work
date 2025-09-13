@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
+from transformers import Wav2Vec2Model
 
 
 class GraphAttentionLayer(nn.Module):
@@ -438,11 +439,6 @@ class Residual_block(nn.Module):
         self.mp = nn.MaxPool2d((1, 3))  # self.mp = nn.MaxPool2d((1,4))
 
     def forward(self, x):
-
-        # TESTING
-        # if self.first:
-        #     print("in", x.shape)
-
         identity = x
         if not self.first:
             out = self.bn1(x)
@@ -462,22 +458,90 @@ class Residual_block(nn.Module):
 
         out += identity
         out = self.mp(out)
-
-        # TESTING
-        # if self.first:
-        #     print("out", out.shape)
         return out
 
 
-class AASIST(nn.Module):
+class SELayer(nn.Module):
+    def __init__(self, channels: int, reduction: int = 16):
+        super().__init__()
+        hidden = max(1, channels // reduction)
+        self.avg = nn.AdaptiveAvgPool2d(1)
+        self.fc = nn.Sequential(
+            nn.Conv2d(channels, hidden, kernel_size=1, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(hidden, channels, kernel_size=1, bias=False),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x * self.fc(self.avg(x))
+
+
+class Res2Net_block(nn.Module):
+    def __init__(self, in_ch, mid_ch, out_ch):
+        super().__init__()
+        self.pre_hierarchical_layer = nn.Sequential(
+            nn.Conv2d(in_ch, mid_ch, kernel_size=1, bias=False),
+            nn.BatchNorm2d(mid_ch),
+            nn.ReLU(inplace=True)
+        )
+
+        self.post_hierarchical_layer = nn.Sequential(
+            nn.Conv2d(mid_ch, out_ch, kernel_size=1, bias=False),
+            nn.BatchNorm2d(out_ch),
+            SELayer(out_ch, 16)
+        )
+
+        self.convs = nn.ModuleList()
+        self.bns = nn.ModuleList()
+        for _ in range(7):
+            self.convs.append(
+                nn.Conv2d(
+                    14,
+                    14,
+                    kernel_size=3,
+                    stride=1,
+                    padding=1,
+                    bias=False,
+                )
+            )
+            self.bns.append(nn.BatchNorm2d(14))
+
+        self.relu = nn.ReLU(inplace=True)
+
+    def hierarchical_layer(self, x):
+        parts = list(torch.split(x, 14, dim=1))
+        final = parts[0]
+        for i in range(7):
+            buf = self.convs[i](parts[i + 1])
+            buf = self.bns[i](buf)
+            if i + 2 < 7:
+                parts[i + 2] = parts[i + 2] + buf
+            final = torch.cat((final, buf), dim=1)
+        return final
+
+    def forward(self, x):
+        id = x
+        x = self.pre_hierarchical_layer(x)
+        x = self.hierarchical_layer(x)
+        x = self.post_hierarchical_layer(x)
+        x = x + id
+        x = self.relu(x)
+        return x
+
+class AASIST2(nn.Module):
     def __init__(self, d_args):
         super().__init__()
+
 
         self.d_args = d_args
         filts = d_args["filts"]
         gat_dims = d_args["gat_dims"]
         pool_ratios = d_args["pool_ratios"]
         temperatures = d_args["temperatures"]
+
+        self.wav2vec = Wav2Vec2Model.from_pretrained("facebook/wav2vec2-xls-r-300m")
+        for p in self.wav2vec.parameters(): p.requires_grad = True
 
         self.conv_time = CONV(out_channels=filts[0],
                               kernel_size=d_args["first_conv"],
@@ -486,15 +550,20 @@ class AASIST(nn.Module):
 
         self.drop = nn.Dropout(0.5, inplace=True)
         self.drop_way = nn.Dropout(0.2, inplace=True)
+        self.feat_proj = nn.Linear(1024, 128)
+        self.bn1  = nn.BatchNorm2d(1)
+
         self.selu = nn.SELU(inplace=True)
 
-        self.encoder = nn.Sequential(
-            nn.Sequential(Residual_block(nb_filts=filts[1], first=True)),
-            nn.Sequential(Residual_block(nb_filts=filts[2])),
-            nn.Sequential(Residual_block(nb_filts=filts[3])),
-            nn.Sequential(Residual_block(nb_filts=filts[4])),
-            nn.Sequential(Residual_block(nb_filts=filts[4])),
-            nn.Sequential(Residual_block(nb_filts=filts[4])))
+        self.encoder = nn.Sequential( # тут упадет, потом докрутить
+            Residual_block(nb_filts=filts[1], first=True),   # [3, 1, 23, 21490] -> [3, 32, 23, 7163]
+            Res2Net_block(128, 112, 128),
+            Res2Net_block(128, 112, 128),
+            Res2Net_block(128, 112, 128),
+            Res2Net_block(128, 112, 128),
+            Res2Net_block(128, 112, 128))               # [...] -> [3, 128, ..., ...]
+
+        self.conv_after_enc = nn.Conv2d(128, 64, kernel_size=1)
 
         self.pos_S = nn.Parameter(torch.randn(1, 23, filts[-1][-1]))
         self.master1 = nn.Parameter(torch.randn(1, 1, gat_dims[0]))
@@ -526,20 +595,26 @@ class AASIST(nn.Module):
         self.pool_hS2 = GraphPool(pool_ratios[2], gat_dims[1], 0.3)
         self.pool_hT2 = GraphPool(pool_ratios[2], gat_dims[1], 0.3)
 
-        self.out_layer = nn.Linear(5 * gat_dims[1], 2)
+        self.W = nn.Parameter(0.01 * torch.randn(5 * gat_dims[1], 2)) # [160, 2]
 
     def forward(self, data_object, Freq_aug=False, **kwargs):
         x = data_object.float()                             # [3, 64600]
-        x = x.unsqueeze(1)                                  # [3, 1, 64600]
-        x = self.conv_time(x, mask=Freq_aug)                # [3, 70, 64472]
-        x = x.unsqueeze(dim=1)                              # [3, 1, 70, 64472]
-        x = F.max_pool2d(torch.abs(x), (3, 3))              # [3, 1, 23, 21490]
-        x = self.first_bn(x)                                # [3, 1, 23, 21490]
-        x = self.selu(x)                                    # [3, 1, 23, 21490]
+        
+        h = self.wav2vec(x, output_hidden_states=False).last_hidden_state
+        h = self.feat_proj(h)
+        x2d = h.transpose(1, 2).unsqueeze(1)
+
+        # x2d = F.adaptive_max_pool2d(x2d, (23, None))
+
+        x2d = self.bn1(x2d)                                     
+        x2d = self.selu(x2d)
 
         # get embeddings using encoder
         # (#bs, #filt, #spec, #seq)
-        e = self.encoder(x)                                 # [3, 64, 23, 29]
+        # тут упадет, потом докрутить
+        e = self.encoder(x2d)                                 # [3, 64, 23, 29]
+        e = self.conv_after_enc(e)
+        e = F.adaptive_max_pool2d(e, (23, 29))
 
         # spectral GAT (GAT-S)
         e_S, _ = torch.max(torch.abs(e), dim=3)             # [3, 64, 23] # max along time
@@ -604,7 +679,7 @@ class AASIST(nn.Module):
         last_hidden = torch.cat(
             [T_max, T_avg, S_max, S_avg, master.squeeze(1)], dim=1)
 
-        last_hidden = self.drop(last_hidden) # [3, 160]
-        output = self.out_layer(last_hidden) # [3, 2]
+        #last_hidden = last_hidden  # [3, 160]
+        # output = last_hidden @ self.W
 
-        return {"logits": output}
+        return {"vectors": last_hidden, "W": self.W}

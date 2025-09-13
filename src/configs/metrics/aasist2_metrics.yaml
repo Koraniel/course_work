@@ -1,0 +1,13 @@
+device: "auto"
+train: [] # empty list
+inference: # metrics that are calculated during inference (eval)
+  - _target_: src.metrics.EERMetric
+    device: ${metrics.device}
+    name: "EER"
+    datasetwise: True
+  # - _target_: src.metrics.tDCFMetric
+  #   device: ${metrics.device}
+  #   name: "tDCF"
+  #   asv_score_file_dev: ASVspoof2019_LA_asv_scores/ASVspoof2019.LA.asv.dev.gi.trl.scores.txt
+  #   asv_score_file_eval: ASVspoof2019_LA_asv_scores/ASVspoof2019.LA.asv.eval.gi.trl.scores.txt
+  #   datasetwise: True

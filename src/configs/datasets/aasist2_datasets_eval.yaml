@@ -1,0 +1,20 @@
+train:
+  _target_: src.datasets.Dataset_ASVspoof2019_general
+  model_type: "aasist2"
+  dataset_type: train
+val:
+  _target_: src.datasets.Dataset_ASVspoof2019_general
+  model_type: "aasist2"
+  dataset_type: dev
+test:
+  _target_: src.datasets.Dataset_ASVspoof2019_general
+  model_type: "aasist2"
+  dataset_type: eval
+  # - _target_: src.datasets.Dataset_ASVspoof2021_general
+  #   model_type: "aasist2"
+  #   dataset_type: eval
+  #   partition_type: LA
+  # - _target_: src.datasets.Dataset_ASVspoof2021_general
+  #   model_type: "aasist2"
+  #   dataset_type: eval
+  #   partition_type: DF

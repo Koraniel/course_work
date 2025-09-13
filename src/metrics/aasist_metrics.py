@@ -2,7 +2,21 @@ import torch
 import torchmetrics
 import numpy as np
 from src.metrics.base_metric import BaseMetric
+from torchmetrics.functional.classification import binary_eer
+import torch.nn.functional as F
 from src.utils.io_utils import ROOT_PATH
+
+# class EERMetric(BaseMetric):
+#     def __init__(self, *args, **kwargs):
+#         super().__init__(*args, **kwargs)
+
+#     def __call__(self, logits: torch.Tensor, labels: torch.Tensor, filenames, *args, **kwargs):
+#         print("labels contains ", set(list(labels.cpu().detach().numpy())))
+#         probs = F.softmax(logits, dim=1)
+#         eer_value = binary_eer(probs[:, 1], labels, thresholds=None)
+#         print(float(eer_value.item()))
+#         return float(eer_value.item())
+#         return float(eer)
 
 
 class EERMetric(BaseMetric):
